@@ -1,0 +1,285 @@
+@{%
+  // Importa el lexer que creaste
+  import lexer from "./lexer.js";
+  // Funciones auxiliares para transformar los nodos del AST
+  const nodo = (type, properties, value) => {
+    if (value !== undefined) return { type, ...properties, value };
+    return { type, ...properties };
+  };
+
+  const opBinaria = (op, izq, der) => nodo("OpBinaria", { operador: op, izquierda: izq, derecha: der });
+  const opUnaria = (op, operando) => nodo("OpUnaria", { operador: op, operando: operando });
+%}
+
+@lexer lexer
+
+
+# --- REGLA INICIAL ---
+Programa -> _nl Sentencias _nl {% (d) => nodo("Programa", { sentencias: d[1] }) %}
+
+Sentencias -> Sentencia _nl {% (d) => [d[0]] %}
+              | Sentencias Sentencia _nl {% (d) => [...d[0], d[1]] %}
+              | %empty {% () => [] %}
+
+# --- SENTENCIAS ---
+Sentencia -> DeclaracionVariable {% id %}
+            | DeclaracionConstante {% id %}
+            | Asignacion {% id %}
+            | EstructuraControl {% id %}
+            | LlamadaImprimir {% id %}
+            # | LlamadaLeerSentencia {% id %} # Eliminado para simplificar, leer() es una expresión
+            | DeclaracionFuncion {% id %}
+            | DeclaracionClase {% id %}
+            | SentenciaDevolver {% id %}
+            | SentenciaRomper {% id %}
+            | ExpresionSentencia {% id %}
+
+ExpresionSentencia -> Expresion _ %PUNTO_Y_COMA {% (d) => nodo("ExpresionSentencia", { expresion: d[0] }) %}
+
+# Ya no se necesita LlamadaLeerSentencia, se maneja por DeclaracionVariable/Asignacion con Expresion -> LlamadaLeer
+
+# --- DECLARACIONES DE VARIABLES Y CONSTANTES ---
+DeclaracionVariable -> %IDENTIFICADOR_VAR _ %DOS_PUNTOS _ Tipo _ %OP_ASIGNACION _ Expresion _ %PUNTO_Y_COMA
+    {% (d) => nodo("DeclaracionVariable", { mutable: true, nombre: d[0], tipo: d[4], valor: d[8] }) %}
+
+DeclaracionConstante -> %IDENTIFICADOR_CONST _ %DOS_PUNTOS _ Tipo _ %OP_ASIGNACION _ Expresion _ %PUNTO_Y_COMA
+    {% (d) => nodo("DeclaracionConstante", { mutable: false, nombre: d[0], tipo: d[4], valor: d[8] }) %}
+
+# --- TIPOS ---
+Tipo -> TipoBase {% id %}
+      | TipoBase _ %LBRACKET _ %RBRACKET {% (d) => nodo("TipoArreglo", { tipoElemento: d[0] }) %}
+      | TipoBase _ %LBRACKET _ %RBRACKET _ %LBRACKET _ %RBRACKET {% (d) => nodo("TipoMatriz", { tipoElemento: d[0] }) %}
+
+TipoBase -> %TIPO_NUMERO {% (d) => d[0].value %}
+          | %TIPO_TEXTO {% (d) => d[0].value %}
+          | %TIPO_BOOLEANO {% (d) => d[0].value %}
+          | %TIPO_OBJETO {% (d) => d[0].value %}
+          | %PR_VACIO {% (d) => d[0].value %} 
+          | %IDENTIFICADOR_GRAL {% (d) => d[0].value %}
+
+# --- ASIGNACIÓN ---
+Asignacion -> Designable _ OperadorAsignacionCompuesto _ Expresion _ %PUNTO_Y_COMA
+    {% (d) => nodo("Asignacion", { designable: d[0], operador: d[2].value, valor: d[4] }) %}
+            | Designable _ %OP_ASIGNACION _ Expresion _ %PUNTO_Y_COMA
+    {% (d) => nodo("Asignacion", { designable: d[0], operador: d[2].value, valor: d[4] }) %}
+
+OperadorAsignacionCompuesto -> %OP_ASIG_SUMA {% id %}
+                              | %OP_ASIG_RESTA {% id %}
+                              | %OP_ASIG_MULT {% id %}
+                              | %OP_ASIG_DIV {% id %}
+
+Designable -> %IDENTIFICADOR_VAR {% id %}
+            | %IDENTIFICADOR_CONST {% id %}
+            | AccesoMiembro {% id %}
+            | AccesoArreglo {% id %}
+
+# --- ESTRUCTURAS DE CONTROL ---
+EstructuraControl -> CondicionalSi {% id %}
+                    | BucleMientras {% id %}
+                    | BuclePara {% id %}
+                    | EstructuraSegun {% id %}
+
+CondicionalSi -> %PR_SI _ %LPAREN _ Expresion _ %RPAREN _ BloqueCodigo _ ClausulasSiNoSi:? _ ClausulaSiNo:?
+    {% (d) => nodo("CondicionalSi", { condicion: d[4], bloqueSi: d[7], bloquesSiNoSi: d[9] || [], bloqueSiNo: d[11] }) %}
+
+ClausulasSiNoSi -> ClausulaSiNoSi {% (d) => [d[0]] %}
+                  | ClausulasSiNoSi _ ClausulaSiNoSi {% (d) => [...d[0], d[2]] %}
+
+ClausulaSiNoSi -> %PR_SINO_SI _ %LPAREN _ Expresion _ %RPAREN _ BloqueCodigo
+    {% (d) => nodo("ClausulaSiNoSi", { condicion: d[4], bloque: d[7] }) %}
+
+ClausulaSiNo -> %PR_SINO __ BloqueCodigo
+    {% (d) => nodo("ClausulaSiNo", { bloque: d[2] }) %}
+
+BloqueCodigo -> %LBRACE _nl Sentencias _nl %RBRACE {% (d) => nodo("Bloque", { sentencias: d[2] }) %}
+              | %LBRACE _nl %RBRACE {% () => nodo("Bloque", { sentencias: [] }) %}
+
+BucleMientras -> %PR_MIENTRAS _ %LPAREN _ Expresion _ %RPAREN _ BloqueCodigo
+    {% (d) => nodo("BucleMientras", { condicion: d[4], bloque: d[7] }) %}
+
+BuclePara -> %PR_PARA _ %LPAREN _ InicializadorPara:? _ %PUNTO_Y_COMA _ CondicionPara:? _ %PUNTO_Y_COMA _ IncrementoPara:? _ %RPAREN _ BloqueCodigo
+    {% (d) => nodo("BuclePara", { inicializacion: d[4], condicion: d[8], incremento: d[12], bloque: d[15] }) %}
+
+InicializadorPara -> DeclaracionVariableSinPuntoComa {% id %}
+                  | AsignacionSinPuntoComa {% id %}
+
+DeclaracionVariableSinPuntoComa -> %IDENTIFICADOR_VAR _ %DOS_PUNTOS _ Tipo _ %OP_ASIGNACION _ Expresion
+    {% (d) => nodo("DeclaracionVariable", { mutable: true, nombre: d[0], tipo: d[4], valor: d[8] }) %}
+
+AsignacionSinPuntoComa -> Designable _ %OP_ASIGNACION _ Expresion
+    {% (d) => nodo("Asignacion", { designable: d[0], operador: d[2].value, valor: d[4] }) %}
+CondicionPara -> Expresion {% id %}
+IncrementoPara -> Expresion {% id %}
+
+
+EstructuraSegun -> %PR_SEGUN _ %LPAREN _ Expresion _ %RPAREN _ %LBRACE _nl CasosSegun:? _nl OpcionPorDefectoSegun:? _nl %RBRACE
+    {% (d) => nodo("EstructuraSegun", { expresionEvaluar: d[4], casos: d[9] || [], pordefecto: d[11] }) %}
+
+CasosSegun -> CasoSegun {% (d) => [d[0]] %}
+            | CasosSegun _nl CasoSegun {% (d) => [...d[0], d[2]] %}
+
+CasoSegun -> %PR_CASO __ Expresion _ %DOS_PUNTOS _ BloqueCodigo _ %PR_ROMPER _ %PUNTO_Y_COMA
+    {% (d) => nodo("CasoSegun", { valorComparar: d[2], bloque: d[6] }) %}
+
+OpcionPorDefectoSegun -> %PR_PORDEFECTO _ %DOS_PUNTOS _ BloqueCodigo
+    {% (d) => nodo("PorDefectoSegun", { bloque: d[4] }) %}
+
+SentenciaDevolver -> %PR_DEVOLVER __ Expresion:? _ %PUNTO_Y_COMA
+    {% (d) => nodo("SentenciaDevolver", { valor: d[2] }) %}
+SentenciaRomper -> %PR_ROMPER _ %PUNTO_Y_COMA
+    {% (d) => nodo("SentenciaRomper", {}) %}
+
+
+# --- FUNCIONES ---
+DeclaracionFuncion -> %PR_FUNCION __ %IDENTIFICADOR_GRAL _ %LPAREN _ ListaParametrosOpcional _ %RPAREN _ %DOS_PUNTOS _ Tipo _ BloqueCodigo
+    {% (d) => nodo("DeclaracionFuncion", { nombre: d[2], parametros: d[6], tipoRetorno: d[10], bloque: d[12] }) %}
+
+ListaParametrosOpcional -> ListaParametros {% id %}
+                        | %empty {% () => [] %}
+
+ListaParametros -> Parametro {% (d) => [d[0]] %}
+                  | ListaParametros _ %COMA _ Parametro {% (d) => [...d[0], d[4]] %}
+
+Parametro -> %IDENTIFICADOR_VAR _ %DOS_PUNTOS _ Tipo
+    {% (d) => nodo("Parametro", { nombre: d[0], tipo: d[4] }) %}
+
+
+# --- CLASES ---
+DeclaracionClase -> %PR_CLASE __ %IDENTIFICADOR_GRAL _ BloqueClase
+    {% (d) => nodo("DeclaracionClase", { nombre: d[2], cuerpo: d[4] }) %}
+
+BloqueClase -> %LBRACE _nl MiembrosClase _nl %RBRACE
+    {% (d) => nodo("BloqueClase", { miembros: d[2] }) %}
+
+MiembrosClase -> MiembroClase _nl {% (d) => [d[0]] %}
+               | MiembrosClase MiembroClase _nl {% (d) => [...d[0], d[1]] %}
+               | %empty {% () => [] %}
+
+MiembroClase -> PropiedadClase {% id %}
+              | ConstructorClase {% id %}
+              | MetodoClase {% id %}
+
+PropiedadClase -> %ALMOHADILLA _ %IDENTIFICADOR_GRAL _ %DOS_PUNTOS _ Tipo _ %PUNTO_Y_COMA
+    {% (d) => nodo("PropiedadClase", { nombre: d[2], tipo: d[6], visibilidad: "privada" }) %}
+                | %IDENTIFICADOR_GRAL _ %DOS_PUNTOS _ Tipo _ %PUNTO_Y_COMA
+    {% (d) => nodo("PropiedadClase", { nombre: d[0], tipo: d[4], visibilidad: "publica" }) %}
+
+ConstructorClase -> %PR_CONSTRUCTOR _ %LPAREN _ ListaParametrosOpcional _ %RPAREN _ BloqueCodigo
+    {% (d) => nodo("ConstructorClase", { parametros: d[4], bloque: d[7] }) %}
+
+MetodoClase -> %IDENTIFICADOR_GRAL _ %LPAREN _ ListaParametrosOpcional _ %RPAREN _ %DOS_PUNTOS _ Tipo _ BloqueCodigo
+    {% (d) => nodo("MetodoClase", { nombre: d[0], parametros: d[4], tipoRetorno: d[8], bloque: d[10], visibilidad: "publica" }) %}
+
+
+# --- IMPRIMIR y LEER ---
+LlamadaImprimir -> %PR_IMPRIMIR _ %LPAREN _ ListaArgumentosOpcional _ %RPAREN _ %PUNTO_Y_COMA
+    {% (d) => nodo("Imprimir", { argumentos: d[4] }) %}
+
+LlamadaLeer -> %PR_LEER _ %LPAREN _ ListaArgumentosOpcional _ %RPAREN
+    {% (d) => nodo("LlamadaLeer", { argumentos: d[4] }) %}
+
+
+# --- EXPRESIONES (con precedencia) ---
+Expresion -> ExpresionLogicaOr {% id %}
+
+ExpresionLogicaOr -> ExpresionLogicaAnd {% id %}
+                    | ExpresionLogicaOr _ %OP_OR _ ExpresionLogicaAnd {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+
+ExpresionLogicaAnd -> ExpresionIgualdad {% id %}
+                      | ExpresionLogicaAnd _ %OP_AND _ ExpresionIgualdad {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+
+ExpresionIgualdad -> ExpresionRelacional {% id %}
+                    | ExpresionIgualdad _ %OP_EQ _ ExpresionRelacional {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+                    | ExpresionIgualdad _ %OP_NEQ _ ExpresionRelacional {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+
+ExpresionRelacional -> ExpresionAditiva {% id %}
+                        | ExpresionRelacional _ %OP_LT _ ExpresionAditiva {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+                        | ExpresionRelacional _ %OP_GT _ ExpresionAditiva {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+                        | ExpresionRelacional _ %OP_LTE _ ExpresionAditiva {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+                        | ExpresionRelacional _ %OP_GTE _ ExpresionAditiva {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+
+ExpresionAditiva -> ExpresionMultiplicativa {% id %}
+                  | ExpresionAditiva _ %OP_SUMA _ ExpresionMultiplicativa {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+                  | ExpresionAditiva _ %OP_RESTA _ ExpresionMultiplicativa {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+
+ExpresionMultiplicativa -> ExpresionPotencia {% id %}
+                          | ExpresionMultiplicativa _ %OP_MULT _ ExpresionPotencia {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+                          | ExpresionMultiplicativa _ %OP_DIV _ ExpresionPotencia {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+                          | ExpresionMultiplicativa _ %OP_MODULO _ ExpresionPotencia {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+
+ExpresionPotencia -> ExpresionUnaria {% id %}
+                    | ExpresionUnaria _ %OP_POTENCIA _ ExpresionPotencia {% (d) => opBinaria(d[2].value, d[0], d[4]) %}
+
+ExpresionUnaria -> ExpresionPostfija {% id %}
+                  | %OP_NOT _ ExpresionUnaria {% (d) => opUnaria(d[0].value, d[2]) %}
+                  | %OP_RESTA _ ExpresionUnaria {% (d) => opUnaria(d[0].value, d[2]) %}
+
+ExpresionPostfija -> LiteralPrimario {% id %}
+                    | ExpresionPostfija _ %OP_INCREMENTO {% (d) => opUnaria(d[1].value + "_post", d[0]) %}
+                    | ExpresionPostfija _ %OP_DECREMENTO {% (d) => opUnaria(d[1].value + "_post", d[0]) %}
+
+LiteralPrimario -> %numero {% (d) => nodo("LiteralNumero", {}, parseFloat(d[0].value)) %}
+                  | %texto {% (d) => nodo("LiteralTexto", {}, d[0].value.slice(1, -1)) %}
+                  | %LIT_VERDADERO {% (d) => nodo("LiteralBooleano", {}, true) %}
+                  | %LIT_FALSO {% (d) => nodo("LiteralBooleano", {}, false) %}
+                  | %IDENTIFICADOR_VAR {% (d) => nodo("Variable", {nombre: d[0].value}) %}
+                  | %IDENTIFICADOR_CONST {% (d) => nodo("Constante", {nombre: d[0].value}) %}
+                  | %PR_ESTE {% (d) => nodo("Este", {nombre: d[0].value}) %}
+                  | %LPAREN _ Expresion _ %RPAREN {% (d) => d[2] %}
+                  | LlamadaFuncion {% id %}
+                  | AccesoMiembro {% id %} # Esta es la regla clave que se está modificando
+                  | AccesoArreglo {% id %}
+                  | CreacionObjeto {% id %}
+                  | CreacionArreglo {% id %}
+                  | CreacionObjetoLiteral {% id %}
+                  | LlamadaLeer {%id%}
+
+
+LlamadaFuncion -> DesignableLlamada _ %LPAREN _ ListaArgumentosOpcional _ %RPAREN
+    {% (d) => nodo("LlamadaFuncion", { callee: d[0], argumentos: d[4] }) %}
+
+DesignableLlamada -> %IDENTIFICADOR_GRAL {% (d) => nodo("IdentificadorGral", {nombre: d[0].value}) %}
+                    | AccesoMiembro {% id %}
+
+
+ListaArgumentosOpcional -> ListaArgumentos {% id %}
+                          | %empty {% () => [] %}
+
+ListaArgumentos -> Expresion {% (d) => [d[0]] %}
+                  | ListaArgumentos _ %COMA _ Expresion {% (d) => [...d[0], d[4]] %}
+
+# MODIFICADO: AccesoMiembro ahora maneja el caso de # para privados
+AccesoMiembro -> LiteralPrimario _ %PUNTO _ %IDENTIFICADOR_GRAL
+    {% (d) => nodo("AccesoMiembro", { objeto: d[0], propiedad: d[4].value , accesoConAlmohadilla: false }) %}
+              | LiteralPrimario _ %PUNTO _ %ALMOHADILLA _ %IDENTIFICADOR_GRAL
+    {% (d) => nodo("AccesoMiembro", { objeto: d[0], propiedad: d[6].value , accesoConAlmohadilla: true }) %}
+
+AccesoArreglo -> LiteralPrimario _ %LBRACKET _ Expresion _ %RBRACKET
+    {% (d) => nodo("AccesoArreglo", { arreglo: d[0], indice: d[4] }) %}
+                | LiteralPrimario _ %LBRACKET _ Expresion _ %RPAREN _ %LBRACKET _ Expresion _ %RPAREN # Error previo, debe ser RPAREN
+    {% (d) => nodo("AccesoArregloDoble", { matriz: d[0], indice1: d[4], indice2: d[9] }) %}
+
+
+CreacionObjeto -> %PR_NUEVO __ %IDENTIFICADOR_GRAL _ %LPAREN _ ListaArgumentosOpcional _ %RPAREN
+    {% (d) => nodo("CreacionObjeto", { clase: d[2], argumentos: d[6] }) %}
+
+CreacionArreglo -> %LBRACKET _ ListaArgumentosOpcional _ %RBRACKET
+    {% (d) => nodo("CreacionArreglo", { elementos: d[2] }) %}
+
+CreacionObjetoLiteral -> %LBRACE _ ParesClaveValorOpcional _ %RBRACE
+    {% (d) => nodo("CreacionObjetoLiteral", { propiedades: d[2] }) %}
+
+ParesClaveValorOpcional -> ParesClaveValor {% id %}
+                          | %empty {% () => [] %}
+
+ParesClaveValor -> ParClaveValor {% (d) => [d[0]] %}
+                  | ParesClaveValor _ %COMA _ ParClaveValor {% (d) => [...d[0], d[4]] %}
+
+ParClaveValor -> %IDENTIFICADOR_GRAL _ %DOS_PUNTOS _ Expresion
+    {% (d) => nodo("ParClaveValor", { clave: d[0].value, valor: d[4] }) %}
+                | %texto _ %DOS_PUNTOS _ Expresion
+    {% (d) => nodo("ParClaveValor", { clave: d[0].value.slice(1,-1), valor: d[4] }) %}
+
+_ -> %ws:* {% () => null %}
+__ -> %ws:+     {% () => null %}
+_nl -> (%ws | %nl | %comentario_linea | %comentario_bloque):* {% () => null %}

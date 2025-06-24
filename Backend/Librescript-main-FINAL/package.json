@@ -1,0 +1,15 @@
+{
+  "name": "librescript",
+  "version": "1.0.0",
+  "description": "Un compilador para LibreScript",
+  "main": "main.js",
+  "type": "module", 
+  "scripts": {
+    "start": "node main.js",
+    "build:grammar": "nearleyc grammar.ne -o grammar.js"
+  },
+  "dependencies": {
+    "moo": "^0.5.2",
+    "nearley": "^2.20.1"
+  }
+}

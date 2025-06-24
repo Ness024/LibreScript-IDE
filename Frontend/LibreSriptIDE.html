@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Librescript IDE</title>
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/dracula.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="header">
+        <h1>
+            <div class="logo">LS</div>
+            Librescript IDE
+        </h1>
+        <div class="actions">
+            <button id="run-btn" class="btn btn-icon">
+                <span>▶</span> 
+            </button>
+            <button id="clear-btn" class="btn btn-secondary btn-icon">
+                <span>⌫</span> Limpiar
+            </button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Panel 1: Code Editor -->
+        <div class="panel" id="editor-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <span class="panel-icon">📝</span>
+                    Editor de Código
+                </div>
+                <div class="panel-controls">
+                    <!--<button class="panel-btn" id="example-btn">Cargar Ej.</button>-->
+                    <select id="example-select" class="panel-select">
+                        <option value="" disabled selected>Cargar Ejemplo</option>
+                        <option value="simple">Sencillo</option>
+                        <option value="medium">Medio</option>
+                        <option value="hard">Difícil</option>
+                    </select>
+                </div>
+            </div>
+            <div class="panel-content">
+                <textarea id="code-editor"></textarea>
+            </div>
+            <div class="resize-handle resize-handle-h"></div>
+            <div class="resize-handle resize-handle-v"></div>
+        </div>
+
+        <!-- Panel 2: Lexer Output -->
+        <div class="panel output-panel" id="lexer-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <span class="panel-icon">🔍</span>
+                    Salida del Lexer
+                </div>
+                <div class="panel-controls">
+                    <button class="panel-btn" id="copy-lexer">Copiar</button>
+                </div>
+            </div>
+            <div class="panel-content" id="lexer-output"></div>
+            <div class="resize-handle resize-handle-h"></div>
+            <div class="resize-handle resize-handle-v"></div>
+        </div>
+
+        <!-- Panel 3: Parser Output -->
+        <div class="panel output-panel" id="parser-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <span class="panel-icon">🧩</span>
+                    Salida del Parser
+                </div>
+                <div class="panel-controls">
+                    <button class="panel-btn" id="copy-parser">Copiar</button>
+                </div>
+            </div>
+            <div class="panel-content" id="parser-output"></div>
+            <div class="resize-handle resize-handle-h"></div>
+            <div class="resize-handle resize-handle-v"></div>
+        </div>
+
+        <!-- Panel 4: Grammar/AST Output -->
+        <div class="panel output-panel" id="grammar-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <span class="panel-icon">🌳</span>
+                    Análisis Semántico
+                </div>
+                <div class="panel-controls">
+                    <button class="panel-btn" id="copy-grammar">Copiar</button>
+                </div>
+            </div>
+            <div class="panel-content" id="grammar-output"></div>
+            <div class="resize-handle resize-handle-h"></div>
+            <div class="resize-handle resize-handle-v"></div>
+        </div>
+    </div>
+
+    <!-- Terminal Panel -->
+    <div class="terminal-container" id="terminal">
+        <div class="terminal-header">
+            <div class="terminal-title">
+                <span class="terminal-prompt">root@LibreScript:~$</span>
+                <span>Terminal</span>
+            </div>
+            <div class="terminal-controls">
+                <button class="terminal-btn" id="clear-terminal">Limpiar</button>
+                <button class="terminal-btn" id="close-terminal">Cerrar</button>
+            </div>
+        </div>
+        <div class="terminal-content" id="terminal-content">
+            <div class="terminal-line">
+                <span class="terminal-prompt">root@LibreScript:~$</span>
+                <span>Bienvenido a Librescript IDE v1.0.0</span>
+            </div>
+            <div class="terminal-line">
+                <span class="terminal-prompt">root@LibreScript:~$</span>
+                <span>Escribe código en el editor y haz clic en "Analizar" para comenzar.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terminal Toggle Button -->
+    <button class="terminal-toggle" id="terminal-toggle">
+        <span>⌘</span>
+        <div class="terminal-badge" id="terminal-badge">0</div>
+    </button>
+
+    <script src="./app.js">
+
+        //document.addEventListener('contextmenu', e => e.preventDefault());
+
+        /*document.addEventListener('keydown', e => {
+          if (e.ctrlKey && ['c', 'u', 's', 'a'].includes(e.key.toLowerCase())) {
+            e.preventDefault();
+          }
+        });*/
+    </script>
+</body>
+</html>
