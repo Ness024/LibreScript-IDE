@@ -41,76 +41,68 @@ function runCode() {
         });
 }
 const libreScriptExecute = (data) => {
-    // Mostrar mensajes uno por uno en líneas separadas
+    // Mensajes generales
     if (data.output.messages && Array.isArray(data.output.messages)) {
-        data.output.messages.forEach(msg => {
-            addTerminalLine(msg, "terminal-success");
-        });
-    } else if (data.output.messages) {
-        addTerminalLine(data.output.messages, "terminal-success");
+        data.output.messages.forEach(msg => addTerminalLine(msg, "terminal-success"));
     }
 
-    // Mostrar errores semánticos si existen
-    if (data.output.semantic?.errors?.length > 0) {
-        data.output.semantic.errors.forEach(error => {
-            addTerminalLine(error.message || error, "terminal-error");
-        });
+    // 1. Errores léxicos y tokens
+    const lexerOutput = document.getElementById('lexer-output');
+    lexerOutput.innerHTML = "";
+    const lexErrors = data.output.semantic?.errors?.lex;
+    if (lexErrors && lexErrors.length > 0) {
+        lexerOutput.innerHTML += "<b>Errores léxicos:</b><br>" +
+            lexErrors.map(e => `<div class='terminal-error'>${e.message || e}</div>`).join("");
+    }
+    if (data.output.tokens && data.output.tokens.length > 0) {
+        lexerOutput.innerHTML += `<div class="token-json-output">${formatTokenOutput(data.output.tokens)}</div>`;
     }
 
-    // Mostrar otros errores si existen
+    // 2. Errores sintácticos y AST
+    const parserOutput = document.getElementById('parser-output');
+    parserOutput.innerHTML = "";
+    const syntaxError = data.output.semantic?.errors?.syntax;
+    if (syntaxError) {
+        // Si el error sintáctico es causado por un token de tipo 'error', mostrar mensaje especial
+        let extraMsg = "";
+        if (syntaxError.token && syntaxError.token.type === 'error') {
+            extraMsg = `<div class='terminal-error'><b>Nota:</b> El análisis sintáctico falló debido a un <b>error léxico</b> detectado por el lexer. Corrige el token inválido para continuar.</div>`;
+        }
+        parserOutput.innerHTML += `<b>Error sintáctico:</b><br><div class='terminal-error'>${syntaxError.message}</div>${extraMsg}`;
+    }
+    if (data.output.ast) {
+        parserOutput.innerHTML += formatAST(data.output.ast);
+    }
+
+    // 3. Errores semánticos
+    const grammarOutput = document.getElementById('grammar-output');
+    grammarOutput.innerHTML = "";
+    const semanticError = data.output.semantic?.errors?.semantic;
+    if (semanticError) {
+        grammarOutput.innerHTML = `<b>Error semántico:</b><br><div class='terminal-error'>${semanticError.message}</div>`;
+    } else {
+        grammarOutput.innerText = "No hay errores semánticos";
+    }
+
+    // 4. Terminal: todos los errores en texto plano
     if (data.output.errors && Array.isArray(data.output.errors)) {
-        data.output.errors.forEach(err => {
-            addTerminalLine(err, "terminal-error");
-        });
+        data.output.errors.forEach(err => addTerminalLine(err, "terminal-error"));
     }
-
-    // Resto del código para mostrar lexer, parser, etc.
-    const lexerOutput = document.getElementById('lexer-output');
-    lexerOutput.innerHTML = `<div class="token-json-output">${formatTokenOutput(data.output.tokens)}</div>`;
-
-    const parserOutput = document.getElementById('parser-output');
-    parserOutput.innerText = "";
-    const ast = data.output.ast;
-    parserOutput.innerHTML = formatAST(ast);
-
-    const grammarOutput = document.getElementById('grammar-output');
-    grammarOutput.innerText = "";
-    const semanticError = data?.output?.semantic?.errors?.message;
-    grammarOutput.innerText = semanticError || "No hay errores semánticos";
-}
-
-/*const libreScriptExecute = (data) => {
-    //salida del lexer
-    addTerminalLine(data.output.messages, "terminal-success");
-    const lexerOutput = document.getElementById('lexer-output');
-    lexerOutput.innerHTML = `<div class="token-json-output">${formatTokenOutput(data.output.tokens)}</div>`;
-
-    //salida del parser
-    const parserOutput = document.getElementById('parser-output');
-    parserOutput.innerText = "";
-    const ast = data.output.ast
-    parserOutput.innerHTML = formatAST(ast);
-
-    //salida de la gramatica
-    const grammarOutput = document.getElementById('grammar-output');
-    grammarOutput.innerText = ""; // Limpia antes
-
-    const semanticError = data?.output?.semantic?.errors?.message;
-    console.log(semanticError);
-    grammarOutput.innerText = semanticError || "No hay errores semánticos";
-}*/
+};
 
 // Inicializar CodeMirror
 const codeEditor = CodeMirror.fromTextArea(
     document.getElementById("code-editor"),
     {
         // ===== Configuración básica =====
-        mode: "javascript",  // Lenguaje (puede ser "html", "css", "python", etc.)
+        mode: "librescript",  // Lenguaje (puede ser "html", "css", "python", etc.)
         theme: "dracula",     // Tema de colores (otros: "default", "monokai", "material")
         lineNumbers: true,    // Mostrar números de línea
         indentUnit: 2,        // Espacios por indentación
-        tabSize: 2,           // Tamaño del tabulador (en espacios)
+        tabSize: 2,           // Tamaño del tabulador
         lineWrapping: true,   // Ajuste de línea (si el código es muy largo)
+        indentWithTabs: false,
+        smartIndent: true,    // (por defecto true)
 
         // ===== Auto-cierre y coincidencia de brackets =====
         autoCloseBrackets: true,  // Cierra automáticamente ({[ ]})
@@ -121,17 +113,18 @@ const codeEditor = CodeMirror.fromTextArea(
         extraKeys: {
             "Tab": function (cm) {
                 if (cm.somethingSelected()) {
-                    cm.indentSelection("add");  // Indenta selección
+                    cm.indentSelection("add");
                 } else {
-                    cm.replaceSelection("  ", "end");  // Inserta espacios
+                    cm.replaceSelection("  ", "end");
                 }
             },
             "Shift-Tab": function (cm) {
-                cm.indentSelection("subtract");  // Desindenta
+                cm.indentSelection("subtract");
             },
-            "Ctrl-Enter": function () {
-                console.log("Ejecutar código...");  // Acción personalizada
-            }
+            "Enter": function(cm) {
+                cm.execCommand("newlineAndIndent");
+            },
+            "Ctrl-Space": "autocomplete" // Atajo para abrir el autocompletado
         },
 
         // ===== Otras opciones útiles =====
@@ -139,6 +132,9 @@ const codeEditor = CodeMirror.fromTextArea(
         gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],  // Añade secciones laterales
         lint: true,             // Validación en tiempo real (depende del modo)
         highlightSelectionMatches: { showToken: true },  // Resalta texto similar
+        hintOptions: {
+            hint: librescriptHint
+        }
     }
 );
 
@@ -164,341 +160,6 @@ const clearTerminalBtn = document.getElementById("clear-terminal");
 // Boton de ejecución
 runBtn.addEventListener('click', runCode);
 
-
-
-/**
- * ---------------------------------------------------------------
- *            FUNCIONES FALSAS PARA SIMULAR ANÁLISIS
- * ---------------------------------------------------------------
- * Estas funciones simulan el comportamiento de un lexer, parser y análisis gramatical.
- */
-
-function fakeLexer(code) {
-    // Simulate lexer output
-    const tokens = [];
-    const keywords = ["function", "if", "else", "return", "let", "print"];
-    const lines = code.split("\n");
-
-    let lineNum = 1;
-    lines.forEach(line => {
-        let col = 1;
-        let inString = false;
-        let currentToken = "";
-        let currentType = "";
-
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-
-            if (inString) {
-                currentToken += char;
-                if (char === '"' && line[i - 1] !== '\\') {
-                    inString = false;
-                    tokens.push({
-                        type: "string",
-                        value: currentToken,
-                        line: lineNum,
-                        col: col - currentToken.length
-                    });
-                    currentToken = "";
-                }
-            } else if (/[a-zA-Z_]/.test(char)) {
-                if (currentType !== "identifier") {
-                    if (currentToken) {
-                        tokens.push({
-                            type: currentType,
-                            value: currentToken,
-                            line: lineNum,
-                            col: col - currentToken.length
-                        });
-                    }
-                    currentToken = char;
-                    currentType = "identifier";
-                } else {
-                    currentToken += char;
-                }
-            } else if (/[0-9]/.test(char)) {
-                if (currentType !== "number" && currentType !== "identifier") {
-                    if (currentToken) {
-                        tokens.push({
-                            type: currentType,
-                            value: currentToken,
-                            line: lineNum,
-                            col: col - currentToken.length
-                        });
-                    }
-                    currentToken = char;
-                    currentType = "number";
-                } else {
-                    currentToken += char;
-                }
-            } else if (char === '"') {
-                if (currentToken) {
-                    tokens.push({
-                        type: currentType,
-                        value: currentToken,
-                        line: lineNum,
-                        col: col - currentToken.length
-                    });
-                }
-                currentToken = char;
-                inString = true;
-            } else if (/[\s]/.test(char)) {
-                if (currentToken) {
-                    if (keywords.includes(currentToken)) {
-                        currentType = "keyword";
-                    }
-                    tokens.push({
-                        type: currentType,
-                        value: currentToken,
-                        line: lineNum,
-                        col: col - currentToken.length
-                    });
-                    currentToken = "";
-                    currentType = "";
-                }
-            } else {
-                if (currentToken) {
-                    if (keywords.includes(currentToken)) {
-                        currentType = "keyword";
-                    }
-                    tokens.push({
-                        type: currentType,
-                        value: currentToken,
-                        line: lineNum,
-                        col: col - currentToken.length
-                    });
-                    currentToken = "";
-                }
-                tokens.push({
-                    type: "operator",
-                    value: char,
-                    line: lineNum,
-                    col: col
-                });
-            }
-            col++;
-        }
-
-        if (currentToken) {
-            if (keywords.includes(currentToken)) {
-                currentType = "keyword";
-            }
-            tokens.push({
-                type: currentType,
-                value: currentToken,
-                line: lineNum,
-                col: col - currentToken.length
-            });
-        }
-
-        lineNum++;
-    });
-
-    return tokens;
-}
-
-function fakeParser(tokens) {
-    // Check for unbalanced parentheses to simulate an error
-    const code = codeEditor.getValue();
-    const openParens = (code.match(/\(/g) || []).length;
-    const closeParens = (code.match(/\)/g) || []).length;
-
-    if (openParens !== closeParens) {
-        throw new Error(`Error de sintaxis: paréntesis desbalanceados (${openParens} abiertos, ${closeParens} cerrados)`);
-    }
-
-    // Check for unbalanced braces
-    const openBraces = (code.match(/{/g) || []).length;
-    const closeBraces = (code.match(/}/g) || []).length;
-
-    if (openBraces !== closeBraces) {
-        throw new Error(`Error de sintaxis: llaves desbalanceadas (${openBraces} abiertas, ${closeBraces} cerradas)`);
-    }
-
-    // Simulate parser output
-    return {
-        type: "Program",
-        body: [
-            {
-                type: "FunctionDeclaration",
-                id: { type: "Identifier", name: "factorial" },
-                params: [{ type: "Identifier", name: "n" }],
-                body: {
-                    type: "BlockStatement",
-                    body: [
-                        {
-                            type: "IfStatement",
-                            test: {
-                                type: "BinaryExpression",
-                                operator: "<=",
-                                left: { type: "Identifier", name: "n" },
-                                right: { type: "NumericLiteral", value: 1 }
-                            },
-                            consequent: {
-                                type: "BlockStatement",
-                                body: [
-                                    {
-                                        type: "ReturnStatement",
-                                        argument: { type: "NumericLiteral", value: 1 }
-                                    }
-                                ]
-                            },
-                            alternate: {
-                                type: "BlockStatement",
-                                body: [
-                                    {
-                                        type: "ReturnStatement",
-                                        argument: {
-                                            type: "BinaryExpression",
-                                            operator: "*",
-                                            left: { type: "Identifier", name: "n" },
-                                            right: {
-                                                type: "CallExpression",
-                                                callee: { type: "Identifier", name: "factorial" },
-                                                arguments: [
-                                                    {
-                                                        type: "BinaryExpression",
-                                                        operator: "-",
-                                                        left: { type: "Identifier", name: "n" },
-                                                        right: { type: "NumericLiteral", value: 1 }
-                                                    }
-                                                ]
-                                            }
-                                        }
-                                    }
-                                ]
-                            }
-                        }
-                    ]
-                }
-            },
-            {
-                type: "VariableDeclaration",
-                declarations: [
-                    {
-                        type: "VariableDeclarator",
-                        id: { type: "Identifier", name: "resultado" },
-                        init: {
-                            type: "CallExpression",
-                            callee: { type: "Identifier", name: "factorial" },
-                            arguments: [{ type: "NumericLiteral", value: 5 }]
-                        }
-                    }
-                ],
-                kind: "let"
-            },
-            {
-                type: "ExpressionStatement",
-                expression: {
-                    type: "CallExpression",
-                    callee: { type: "Identifier", name: "print" },
-                    arguments: [
-                        {
-                            type: "BinaryExpression",
-                            operator: "+",
-                            left: { type: "StringLiteral", value: "El factorial de 5 es: " },
-                            right: { type: "Identifier", name: "resultado" }
-                        }
-                    ]
-                }
-            }
-        ]
-    };
-}
-
-function fakeGrammar(ast) {
-    // Simulate grammar/AST output with more details
-    return {
-        grammar: {
-            rules: [
-                { name: "program", pattern: "statement+" },
-                { name: "statement", pattern: "functionDecl | variableDecl | expressionStmt | returnStmt | ifStmt" },
-                { name: "functionDecl", pattern: "'function' identifier '(' paramList? ')' block" },
-                { name: "variableDecl", pattern: "'let' identifier ('=' expression)? ';'?" },
-                { name: "expressionStmt", pattern: "expression ';'?" },
-                { name: "returnStmt", pattern: "'return' expression? ';'?" },
-                { name: "ifStmt", pattern: "'if' expression block ('else' (block | ifStmt))?" },
-                { name: "block", pattern: "'{' statement* '}'" },
-                { name: "expression", pattern: "assignment" },
-                { name: "assignment", pattern: "identifier '=' assignment | logicalOr" },
-                { name: "logicalOr", pattern: "logicalAnd ('||' logicalAnd)*" },
-                { name: "logicalAnd", pattern: "equality ('&&' equality)*" },
-                { name: "equality", pattern: "comparison (('==' | '!=') comparison)*" },
-                { name: "comparison", pattern: "addition (('<' | '<=' | '>' | '>=') addition)*" },
-                { name: "addition", pattern: "multiplication (('+' | '-') multiplication)*" },
-                { name: "multiplication", pattern: "unary (('*' | '/') unary)*" },
-                { name: "unary", pattern: "('-' | '!') unary | call" },
-                { name: "call", pattern: "primary ('(' argumentList? ')')?" },
-                { name: "primary", pattern: "NUMBER | STRING | 'true' | 'false' | 'null' | identifier | '(' expression ')'" },
-                { name: "identifier", pattern: "IDENTIFIER" }
-            ],
-            tokens: [
-                { name: "NUMBER", pattern: "[0-9]+" },
-                { name: "STRING", pattern: "\"[^\"]*\"" },
-                { name: "IDENTIFIER", pattern: "[a-zA-Z_][a-zA-Z0-9_]*" },
-                { name: "WHITESPACE", pattern: "\\s+", ignore: true },
-                { name: "COMMENT", pattern: "//.*", ignore: true }
-            ]
-        },
-        parseTree: ast
-    };
-}
-
-// Ejecutar análisis de código
-function runAnalysis() {
-    const code = codeEditor.getValue();
-
-    try {
-        addTerminalLine("Iniciando análisis de código...", "terminal-success");
-
-        // Run lexer
-        addTerminalLine("Ejecutando lexer...");
-        const lexerResult = fakeLexer(code);
-        lexerOutput.innerHTML = formatJSON(lexerResult);
-        addTerminalLine("Lexer completado con éxito.", "terminal-success");
-
-        // Run parser
-        addTerminalLine("Ejecutando parser...");
-        const parserResult = fakeParser(lexerResult);
-        parserOutput.innerHTML = formatJSON(parserResult);
-        addTerminalLine("Parser completado con éxito.", "terminal-success");
-
-        // Run grammar analysis
-        addTerminalLine("Generando árbol de análisis...");
-        const grammarResult = fakeGrammar(parserResult);
-        grammarOutput.innerHTML = formatJSON(grammarResult);
-        addTerminalLine("Árbol de análisis generado con éxito.", "terminal-success");
-
-        // Add success indicator
-        runBtn.innerHTML = '<span>✓</span> Análisis Completo';
-        runBtn.classList.add('success');
-        setTimeout(() => {
-            runBtn.innerHTML = '<span>▶</span> Analizar';
-            runBtn.classList.remove('success');
-        }, 2000);
-
-        addTerminalLine("Análisis completado sin errores.", "terminal-success");
-    } catch (error) {
-        console.error("Error during analysis:", error);
-
-        // Show error in output panels
-        lexerOutput.innerHTML = `<span class="error">Error: ${error.message}</span>`;
-        parserOutput.innerHTML = `<span class="error">Error: ${error.message}</span>`;
-        grammarOutput.innerHTML = `<span class="error">Error: ${error.message}</span>`;
-
-        // Add error indicator
-        runBtn.innerHTML = '<span>✗</span> Error';
-        runBtn.classList.add('error');
-        setTimeout(() => {
-            runBtn.innerHTML = '<span>▶</span> Analizar';
-            runBtn.classList.remove('error');
-        }, 2000);
-
-        // Add error to terminal
-        addTerminalLine(`Error: ${error.message}`, "terminal-error");
-    }
-}
-//runBtn.addEventListener("click", runAnalysis);
 
 
 /**
@@ -849,4 +510,32 @@ function stopResize() {
 
 window.addEventListener('resize', () => {
     codeEditor.refresh();
+});
+
+const LIBRESCRIPT_HINTS = [
+  "funcion", "clase", "imprimir", "leer", "si", "siNo", "mientras", "para", "verdadero", "falso", "devolver", "nuevo", "este", "vacio", "segun", "caso", "pordefecto", "romper",
+  "numero", "texto", "booleano", "arreglo", "Objeto"
+];
+
+function librescriptHint(cm) {
+  const cur = cm.getCursor();
+  const token = cm.getTokenAt(cur);
+  const start = token.start;
+  const end = cur.ch;
+  const word = token.string;
+  const list = LIBRESCRIPT_HINTS.filter(function(item) {
+    return item.startsWith(word);
+  });
+
+  return {
+    list: list.length ? list : LIBRESCRIPT_HINTS,
+    from: CodeMirror.Pos(cur.line, start),
+    to: CodeMirror.Pos(cur.line, end)
+  };
+}
+
+codeEditor.on("inputRead", function(cm, change) {
+  if (change.text[0] && /[a-zA-Z_\\$]/.test(change.text[0])) {
+    cm.showHint({completeSingle: false});
+  }
 });

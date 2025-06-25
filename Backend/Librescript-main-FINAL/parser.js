@@ -25,19 +25,21 @@ export function parseCode(code) {
      return null; // Código vacío o solo comentarios/espacios.
    }
   } catch (error) {
-    console.error("Error de parseo:", error.message);
-    // Intentar obtener más detalles del error de Nearley
-    // error.offset es la posición del token problemático.
-    // error.token es el token problemático.
+    let detailedMessage = error.message;
     if (error.token) {
-      const {line, col, offset, text} = error.token;
-      console.error(`Error cerca de la línea ${line}, columna ${col} (offset ${offset}). Token: '${text}' (tipo: ${error.token.type})`);
-  } else if (error.message.includes("Unexpected end of input")) {
-      console.error("Error: Fin inesperado de la entrada. Puede que falte un ';' o '}'.");
+      const {line, col, offset, text, type} = error.token;
+      detailedMessage = `Error cerca de la línea ${line}, columna ${col} (offset ${offset}). Token: '${text}' (tipo: ${type})`;
+    } else if (error.message.includes("Unexpected end of input")) {
+      detailedMessage = "Error: Fin inesperado de la entrada. Puede que falte un ';' o '}'.";
+    }
+    // Lanza un error con el mensaje detallado y los datos originales
+    const err = new Error(detailedMessage);
+    err.location = error.token ? { start: { line: error.token.line, column: error.token.col } } : undefined;
+    err.token = error.token;
+    throw err;
   }
-  return null;
 }
-}
+
 
 
 // Exporta la función de parseo

@@ -980,21 +980,37 @@ export function main(code) {
       scopes: []
     },
     errors: []
-  }
+  };
 
+  let lexErrors = [];
+  let syntaxError = null;
+  let semanticError = null;
+  let ast = null;
 
-
-  // ---- FASE LÉXICA (Opcional, para depuración) ----
-
-
+  // ---- FASE LÉXICA (acumular todos los errores léxicos) ----
+  output.messages.push("Iniciando análisis léxico...");
   try {
-    output.messages.push("Iniciando análisis léxico...");
     lexer.reset(code);
     const tokens = [];
     let token;
-    while (token = lexer.next()) {
-      if (token.type !== 'ws' && token.type !== 'nl') { // Excluir espacios y saltos de línea puros
-        tokens.push(token);
+    while (true) {
+      try {
+        token = lexer.next();
+        if (!token) break;
+        if (token.type !== 'ws' && token.type !== 'nl') {
+          tokens.push(token);
+        }
+      } catch (lexErr) {
+        lexErrors.push({
+          type: "lexical",
+          message: `Error léxico 🔴: ${lexErr.message}`,
+          severity: "error",
+          line: lexErr.line || '?',
+          column: lexErr.col || '?'
+        });
+        // Intentar continuar (si el lexer lo permite)
+        // Si el lexer no puede continuar, salir del bucle
+        break;
       }
     }
     output.tokens = tokens.map(t => ({
@@ -1004,142 +1020,110 @@ export function main(code) {
       line: t.line,
       col: t.col
     }));
-
-
-  } catch (lexErr) {
-    output.semantic.exit = false;
-    output.semantic.errors = {
+  } catch (e) {
+    lexErrors.push({
       type: "lexical",
-      message: `Error léxico 🔴: ${lexErr.message}`,
+      message: `Error léxico 🔴: ${e.message}`,
       severity: "error",
-      line: lexErr.line || '?',
-      column: lexErr.col || '?'
-    };
-    output.errors.push(`Error léxico 🔴: ${lexErr.message}`);
-    return output;
+      line: e.line || '?',
+      column: e.col || '?'
+    });
   }
-  
+  if (lexErrors.length > 0) {
+    output.errors.push(...lexErrors.map(e => e.message));
+  }
+
   // ---- FASE SINTÁCTICA ----
-  let ast;
-  try {
-  console.log("\n--- AST (Árbol de Sintaxis Abstracta) ---");
   output.messages.push("Iniciando análisis sintáctico...");
-  ast = parseCode(code);
-
-  if (!ast) {
-     throw new Error("No se pudo generar el AST (árbol de sintaxis abstracta)");
-   
+  try {
+    ast = parseCode(code);
+    if (!ast) {
+      throw new Error("No se pudo generar el AST (árbol de sintaxis abstracta)");
+    }
+    output.ast = ast;
+    output.messages.push("Análisis sintáctico completado sin errores. ✅");
+  } catch (parseErr) {
+    syntaxError = {
+      type: "syntax",
+      message: `Error de sintaxis 🔴: ${parseErr.message}`,
+      severity: "error",
+      line: parseErr.location?.start.line || '?',
+      column: parseErr.location?.start.column || '?',
+      expected: parseErr.expected,
+      found: parseErr.found,
+      token: parseErr.token,
+      context: code.split('\n')[parseErr.location?.start.line - 1] || ''
+    };
+    output.errors.push(`Error de sintaxis 🔴 (línea ${syntaxError.line}:${syntaxError.column}): ${parseErr.message}`);
   }
-}  catch (parseErr) {
-  output.semantic.exit = false;
-  
-  // Detalles específicos del error de parseo
-  const errorInfo = {
-    type: "syntax",  // Tipo de error (sintáctico)
-    message: `Error de sintaxis 🔴: ${parseErr.message}`,
-    severity: "error",
-    line: parseErr.location?.start.line || '?',
-    column: parseErr.location?.start.column || '?',
-    // Puedes añadir más detalles si tu parser los provee:
-    expected: parseErr.expected,  // Lo que esperaba el parser
-    found: parseErr.found,        // Lo que encontró
-    token: parseErr.token,        // Token problemático
-    // Área alrededor del error para contexto (opcional)
-    context: code.split('\n')[parseErr.location?.start.line - 1] || ''
-  };
-  
-  output.semantic.errors = errorInfo;
-  output.errors.push(`Error de sintaxis 🔴 (línea ${errorInfo.line}:${errorInfo.column}): ${parseErr.message}`);
-  
-  return output;
-}
-
-  output.ast = ast;
-  
-  output.messages.push("Análisis sintáctico completado sin errores. ✅");
-  console.log(JSON.stringify(ast, null, 2));
 
   // ---- FASE SEMÁNTICA ----
-  console.log("\n--- Análisis Semántico ---");
-  output.messages.push("Iniciando análisis semántico...");
-  const globalSemanticScope = new SymbolTable();
-  globalSemanticScope.output = output.semantic; // Conectar el output de semántica al scope global
-
- 
-
-  globalSemanticScope.addSymbol("imprimir",
-    { base: "vacio" }, // Tipo de retorno
-    "funcion",
-    {
-      parametros: [], // Lista vacía para isVariadic
-      tipoRetorno: { base: "vacio" },
-      isVariadic: true // Permite cualquier número y tipo de argumentos
-    }
-  );
-  // leer([prompt: texto]): texto [cite: 71, 72]
-  globalSemanticScope.addSymbol("leer",
-    { base: "texto" }, // Tipo de retorno
-    "funcion",
-    {
-      parametros: [{ name: "$prompt", type: { base: "texto" }, optional: true }],
+  if (ast) {
+    output.messages.push("Iniciando análisis semántico...");
+    const globalSemanticScope = new SymbolTable();
+    globalSemanticScope.output = output.semantic;
+    globalSemanticScope.addSymbol("imprimir",
+      { base: "vacio" },
+      "funcion",
+      {
+        parametros: [],
+        tipoRetorno: { base: "vacio" },
+        isVariadic: true
+      }
+    );
+    globalSemanticScope.addSymbol("leer",
+      { base: "texto" },
+      "funcion",
+      {
+        parametros: [{ name: "$prompt", type: { base: "texto" }, optional: true }],
+        tipoRetorno: { base: "texto" },
+        isVariadic: false
+      }
+    );
+    globalSemanticScope.addSymbol("aNum", { base: "numero" }, "funcion", {
+      parametros: [{ name: "$valor", type: { base: "texto" } }],
+      tipoRetorno: { base: "numero" },
+      isVariadic: false
+    });
+    globalSemanticScope.addSymbol("aTxt", { base: "texto" }, "funcion", {
+      parametros: [{ name: "$valor", type: { base: "Objeto" } }],
       tipoRetorno: { base: "texto" },
       isVariadic: false
-    }
-  );
-  // Funciones de conversión de tipo [cite: 16]
-  // aNum(valor: texto): numero
-  globalSemanticScope.addSymbol("aNum", { base: "numero" }, "funcion", {
-    parametros: [{ name: "$valor", type: { base: "texto" } }], // También podría aceptar 'numero' o 'booleano'
-    tipoRetorno: { base: "numero" },
-    isVariadic: false
-  });
-  // aTxt(valor: cualquier_primitivo): texto
-  globalSemanticScope.addSymbol("aTxt", { base: "texto" }, "funcion", {
-    parametros: [{ name: "$valor", type: { base: "Objeto" } }], // 'Objeto' como 'any' para aceptar numero, booleano, texto
-    tipoRetorno: { base: "texto" },
-    isVariadic: false
-  });
-  // aBool(valor: cualquier_primitivo): booleano
-  globalSemanticScope.addSymbol("aBool", { base: "booleano" }, "funcion", {
-    parametros: [{ name: "$valor", type: { base: "Objeto" } }],
-    tipoRetorno: { base: "booleano" },
-    isVariadic: false
-  });
-
-  // Tipo 'Objeto' predefinido [cite: 5]
-  globalSemanticScope.addSymbol("Objeto", { base: "Objeto", isClass: false, isType: true }, "tipo");
-
-
-  try {
-    analyzeSemantics(ast, globalSemanticScope);
-    output.semantic.exit = true;
-    output.semantic.errors = null; // No hay errores semánticos
-    output.semantic.symbols = recolectarSimbolos(globalSemanticScope);
-    output.semantic.scopes = construirJerarquiaScope(globalSemanticScope);
-    
-    output.messages.push("Análisis semántico completado sin errores. ✅");
-  } catch (e) {
-    output.semantic.exit = false;
-    if (e instanceof SemanticError) {
-      output.semantic.errors = {
-        type: "semantic",
+    });
+    globalSemanticScope.addSymbol("aBool", { base: "booleano" }, "funcion", {
+      parametros: [{ name: "$valor", type: { base: "Objeto" } }],
+      tipoRetorno: { base: "booleano" },
+      isVariadic: false
+    });
+    globalSemanticScope.addSymbol("Objeto", { base: "Objeto", isClass: false, isType: true }, "tipo");
+    try {
+      analyzeSemantics(ast, globalSemanticScope);
+      output.semantic.exit = true;
+      output.semantic.errors = null;
+      output.semantic.symbols = recolectarSimbolos(globalSemanticScope);
+      output.semantic.scopes = construirJerarquiaScope(globalSemanticScope);
+      output.messages.push("Análisis semántico completado sin errores. ✅");
+    } catch (e) {
+      semanticError = {
+        type: e instanceof SemanticError ? "semantic" : "unexpected",
         message: `Error semántico 🔴: ${e.message}`,
         line: e.line || '?',
         column: e.column || '?',
         severity: "error"
       };
-      output.errors.push(`Error semántico 🔴 (línea ${e.line || '?'}): ${e.message}`);
-    } else {
-      output.semantic.errors = {
-        type: "unexpected",
-        message: `Error inesperado durante el análisis semántico 🔴: ${e.message}`,
-        severity: "error"
-      };
-      output.errors.push("Error inesperado durante el análisis semántico 🔴: " + e.message);
-      output.errors.push("Detalles: " + e.stack);
+      output.errors.push(`Error semántico 🔴 (línea ${semanticError.line}): ${e.message}`);
     }
   }
-    return output;
+
+  // Resumen de errores para el frontend
+  output.semantic.exit = lexErrors.length === 0 && !syntaxError && !semanticError;
+  output.semantic.errors = {
+    lex: lexErrors.length > 0 ? lexErrors : null,
+    syntax: syntaxError,
+    semantic: semanticError
+  };
+
+  return output;
 }
 
 function recolectarSimbolos(scope, simbolos = []) {
