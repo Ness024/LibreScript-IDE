@@ -22,7 +22,8 @@ function runCode() {
     }
 
     console.log('Running code:', code);
-    fetch('http://Localhost:3000/execute', {
+    /*fetch('http://Localhost:3000/execute', {*/
+    fetch('/execute', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -66,9 +67,9 @@ const libreScriptExecute = (data) => {
         // Si el error sintáctico es causado por un token de tipo 'error', mostrar mensaje especial
         let extraMsg = "";
         if (syntaxError.token && syntaxError.token.type === 'error') {
-            extraMsg = `<div class='terminal-error'><b>Nota:</b> El análisis sintáctico falló debido a un <b>error léxico</b> detectado por el lexer. Corrige el token inválido para continuar.</div>`;
+            extraMsg = `<div class='terminal-error'>El análisis sintáctico falló debido a un <b>error léxico</b> detectado por el lexer. Token inválido.</div>`;
         }
-        parserOutput.innerHTML += `<b>Error sintáctico:</b><br><div class='terminal-error'>${syntaxError.message}</div>${extraMsg}`;
+        parserOutput.innerHTML += `<br><div class='terminal-error'>${syntaxError.message}</div>${extraMsg}`;
     }
     if (data.output.ast) {
         parserOutput.innerHTML += formatAST(data.output.ast);
@@ -79,7 +80,7 @@ const libreScriptExecute = (data) => {
     grammarOutput.innerHTML = "";
     const semanticError = data.output.semantic?.errors?.semantic;
     if (semanticError) {
-        grammarOutput.innerHTML = `<b>Error semántico:</b><br><div class='terminal-error'>${semanticError.message}</div>`;
+        grammarOutput.innerHTML = `<br><div class='terminal-error'>${semanticError.message}</div>`;
     } else {
         grammarOutput.innerText = "No hay errores semánticos";
     }
@@ -156,6 +157,8 @@ const terminalToggle = document.getElementById("terminal-toggle");
 const terminalBadge = document.getElementById("terminal-badge");
 const closeTerminalBtn = document.getElementById("close-terminal");
 const clearTerminalBtn = document.getElementById("clear-terminal");
+const themeToggle = document.getElementById('theme-toggle');
+const themeIcon = document.getElementById('theme-icon');
 
 // Boton de ejecución
 runBtn.addEventListener('click', runCode);
@@ -539,3 +542,45 @@ codeEditor.on("inputRead", function(cm, change) {
     cm.showHint({completeSingle: false});
   }
 });
+
+// === THEME TOGGLE ===
+window.addEventListener('DOMContentLoaded', function() {
+    const themeToggle = document.getElementById('theme-toggle');
+    const themeIcon = document.getElementById('theme-icon');
+
+    function setTheme(theme) {
+        if (theme === 'dark') {
+            document.body.classList.add('theme-dark');
+            if (themeIcon) themeIcon.textContent = '☀️';
+            setCodeMirrorTheme('dracula');
+        } else {
+            document.body.classList.remove('theme-dark');
+            if (themeIcon) themeIcon.textContent = '🌙';
+            setCodeMirrorTheme('default');
+        }
+        localStorage.setItem('theme', theme);
+    }
+
+    // Inicializar según preferencia guardada o sistema
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+        setTheme(savedTheme);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        setTheme('dark');
+    } else {
+        setTheme('light');
+    }
+
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            const isDark = document.body.classList.toggle('theme-dark');
+            setTheme(isDark ? 'dark' : 'light');
+        });
+    } else {
+        console.log('No se encontró el botón de cambio de tema');
+    }
+});
+
+function setCodeMirrorTheme(theme) {
+    codeEditor.setOption("theme", theme);
+}

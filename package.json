@@ -2,15 +2,16 @@
   "name": "librescript-ide",
   "version": "1.0.0",
   "type": "module",
-  "main": "app.js",
+  "main": "Backend/app.js",
   "scripts": {
-    "start": "node backend/app.js",
-    "dev": "nodemon backend/app.js"
+    "start": "node Backend/app.js",
+    "dev": "nodemon Backend/app.js",
+    "build": "echo 'No build step required'"
   },
-  "keywords": [],
+  "keywords": ["ide", "programming-language", "compiler", "interpreter"],
   "author": "Nestor Yescas Ramos",
   "license": "ISC",
-  "description": "",
+  "description": "LibreScript IDE - A web-based IDE for the LibreScript programming language",
   "dependencies": {
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
@@ -20,5 +21,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
